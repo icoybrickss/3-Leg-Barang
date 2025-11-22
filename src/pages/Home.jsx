@@ -59,8 +59,12 @@ export default function Home() {
     const url = `https://api.balldontlie.io/v1/games?dates[]=${datePrev}&dates[]=${today}&dates[]=${dateNext}&per_page=200`;
 
 
-    fetch(url)
-      .then((res) => {
+    fetch(url, {
+        headers: {
+          Authorization: import.meta.env.VITE_BALDONTLIE_KEY
+        }
+      })
+        .then((res) => {
         if (!res.ok) {
           // try to parse body for a message, otherwise throw statusText
           return res
