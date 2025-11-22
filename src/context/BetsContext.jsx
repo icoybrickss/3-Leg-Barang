@@ -150,8 +150,30 @@ export function BetsProvider({ children }) {
     setParlays((prev) => prev.map((s) => (s.id === slipId ? { ...s, status } : s)));
   };
 
-  const removeSlip = (slipId) => {
+  const removeSlip = async (slipId) => {
+    // Optimistically remove from local state
     setParlays((prev) => prev.filter((s) => s.id !== slipId));
+
+    // If slipId looks like a server-side id (string / uuid), attempt to
+    // remove it from Supabase so it doesn't get re-fetched on next load.
+    try {
+      if (typeof slipId === 'string' && slipId.length > 8) {
+        // delete picks first (if your DB doesn't cascade)
+        try {
+          await supabase.from('picks').delete().eq('parlay_id', slipId);
+        } catch (pErr) {
+          // non-fatal; continue to attempt deleting parlay row
+          console.warn('Failed to delete picks for parlay', slipId, pErr);
+        }
+
+        const { error } = await supabase.from('parlays').delete().eq('id', slipId);
+        if (error) {
+          console.warn('Failed to delete parlay from Supabase', slipId, error);
+        }
+      }
+    } catch (err) {
+      console.error('removeSlip: unexpected error deleting from Supabase', err);
+    }
   };
 
   return (

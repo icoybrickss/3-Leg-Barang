@@ -170,8 +170,8 @@ export default function MyBets() {
 	}
 
 	async function handleSettleWithRpc(slip, isWin) {
-		setSettlingId(slip.id);
-		try {
+			setSettlingId(slip.id);
+			try {
 			const payout = isWin ? Number(payoutInputs[slip.id] || 0) : 0;
 			try {
 				await settleParlayRpc(slip.id, isWin, payout);
@@ -180,8 +180,10 @@ export default function MyBets() {
 				// fallback to non-atomic client-side settle
 				await settleParlayClient(slip.id, isWin, payout);
 			}
-			// update UI: remove slip from context then reload as requested
-			removeSlip(slip.id);
+			// update UI: remove slip from context (await deletion) then reload
+			if (typeof removeSlip === 'function') {
+				await removeSlip(slip.id);
+			}
 			window.location.reload();
 		} catch (err) {
 			console.error('settle failed', err);
@@ -250,7 +252,7 @@ export default function MyBets() {
 														{settlingId === slip.id ? 'Settling...' : 'Mark Loss'}
 													</button>
 
-													<button className="btn ghost" onClick={() => { removeSlip(slip.id); window.location.reload(); }}>Remove Slip</button>
+													<button className="btn ghost" onClick={async () => { if (typeof removeSlip === 'function') await removeSlip(slip.id); window.location.reload(); }}>Remove Slip</button>
 												</div>
 							</div>
 						))}
