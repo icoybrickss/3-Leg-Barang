@@ -1,5 +1,10 @@
 {
   "compilerOptions": {
+    // Allow compiling JS/JSX files since this project is primarily JavaScript
+    // with React JSX. This prevents `tsc` from failing when no .ts/.tsx
+    // files are present during CI builds.
+    "allowJs": true,
+    "checkJs": false,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2022",
     "useDefineForClassFields": true,
@@ -24,5 +29,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  // Include all files under src (recursively). Using a glob ensures files
+  // like .jsx are picked up by `tsc` when allowJs is enabled.
+  "include": ["src/**/*"]
 }
