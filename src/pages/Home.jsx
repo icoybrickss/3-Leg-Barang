@@ -56,7 +56,8 @@ export default function Home() {
 
     const datePrev = addDaysIso(today, -1);
     const dateNext = addDaysIso(today, 1);
-    const url = `/api/balldontlie/v1/games?dates[]=${datePrev}&dates[]=${today}&dates[]=${dateNext}&per_page=200`;
+    const url = `https://api.balldontlie.io/v1/games?dates[]=${datePrev}&dates[]=${today}&dates[]=${dateNext}&per_page=200`;
+
 
     fetch(url)
       .then((res) => {
