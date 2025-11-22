@@ -4,10 +4,16 @@ import supabase from '../lib/supabase';
 // Helpers
 const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+// Use UTC date parts when converting created_at timestamps to keys so the
+// UI groups parlays by the server-side day (avoids timezone shifts that can
+// move a UTC timestamp into the next/previous local day).
 const formatDateKey = (d) => {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
+  // Shift the date back one day for display/grouping to match expected UI
+  // behavior where server timestamps were appearing a day ahead.
+  const dShift = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  const yyyy = dShift.getUTCFullYear();
+  const mm = String(dShift.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dShift.getUTCDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
 

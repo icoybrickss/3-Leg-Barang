@@ -7,7 +7,15 @@ export default function App() {
   return (
     <div>
       <nav className="site-nav container">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="site-brand">
+          <div className="brand-mark">3</div>
+          <div className="brand-text">
+            <div className="brand-title">3-Leg Spakol</div>
+            <div className="brand-sub">anti barang parlay</div>
+          </div>
+        </div>
+
+        <div className="site-links">
           <Link to="/">Games</Link>
           <Link to="/mybets">My Bets</Link>
           <Link to="/dashboard">Dashboard</Link>

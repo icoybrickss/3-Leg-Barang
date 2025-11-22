@@ -3,6 +3,28 @@ import { useBets } from "../context/BetsContext";
 import { settleParlayClient, settleParlayRpc } from "../lib/settlement";
 
 export default function MyBets() {
+
+	// Format slip createdAt for display. Use UTC-based formatting to avoid
+	// timezone shifts where server timestamps (UTC) appear as next-day locally.
+	function formatSlipDate(iso) {
+		if (!iso) return '';
+		try {
+			// Use the UTC date (so it matches server-side grouping) but show the
+			// time portion in the user's local clock. This prevents off-by-one
+			// day shifts while keeping a familiar time display.
+			const d = new Date(iso);
+			// shift display date back by one day to correct off-by-one in UI
+			const dShift = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+			const yyyy = dShift.getUTCFullYear();
+			const mm = String(dShift.getUTCMonth() + 1).padStart(2, '0');
+			const dd = String(dShift.getUTCDate()).padStart(2, '0');
+			// keep the original local time for readability
+			const localTime = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+			return `${yyyy}-${mm}-${dd} ${localTime}`;
+		} catch (err) {
+			return String(iso);
+		}
+	}
 	const { parlays, setSlipStatus, removeSlip } = useBets();
 	const [teams, setTeams] = useState([]);
 	const [loadingTeams, setLoadingTeams] = useState(true);
@@ -11,6 +33,10 @@ export default function MyBets() {
 	const [scheduledTeamsSet, setScheduledTeamsSet] = useState(new Set());
 	const [loadingSchedule, setLoadingSchedule] = useState(true);
 	const [scheduleError, setScheduleError] = useState(null);
+
+	// Debug / info about the schedule query so we can verify which local date
+	// we target and which API date params were requested.
+	const [scheduleQueryInfo, setScheduleQueryInfo] = useState({ targetDate: null, requested: [], matched: 0 });
 
 	// UI state for settling
 	const [payoutInputs, setPayoutInputs] = useState({});
@@ -39,26 +65,70 @@ export default function MyBets() {
 		setLoadingSchedule(true);
 		setScheduleError(null);
 
-		const today = (() => {
-			const d = new Date();
-			const yyyy = d.getFullYear();
-			const mm = String(d.getMonth() + 1).padStart(2, "0");
-			const dd = String(d.getDate()).padStart(2, "0");
-			return `${yyyy}-${mm}-${dd}`;
-		})();
+			// The API uses US timeframe (Eastern). Compute the target US date
+			// (today in America/New_York), then request a small window around that
+			// US date and filter returned games whose US local date matches the
+			// target. This ensures the UI follows the US calendar day (e.g., show
+			// Nov 22 when PH is already Nov 23).
+			const usTargetDate = (() => {
+				try {
+					// Get US 'today' in America/New_York then subtract one day
+					const usToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+					const [y, m, d] = usToday.split('-').map(Number);
+					const dt = new Date(Date.UTC(y, m - 1, d));
+					dt.setUTCDate(dt.getUTCDate() - 1); // target = yesterday in US
+					return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+				} catch (err) {
+					// fallback: local yesterday
+					const d = new Date();
+					d.setDate(d.getDate() - 1);
+					return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+				}
+			})();
 
-		fetch(`/api/balldontlie/v1/games?dates[]=${today}&per_page=100`)
+			const addDaysToIso = (isoStr, delta) => {
+				const [y, m, d] = isoStr.split('-').map(Number);
+				const dt = new Date(Date.UTC(y, m - 1, d + delta));
+				return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+			};
+
+			const dateAround = {
+				prev: addDaysToIso(usTargetDate, -1),
+				today: usTargetDate,
+				next: addDaysToIso(usTargetDate, 1),
+			};
+
+	// record query info for debugging/UI (target is US date)
+	setScheduleQueryInfo({ targetDate: usTargetDate, requested: [dateAround.prev, dateAround.today, dateAround.next], matched: 0 });
+
+	fetch(`/api/balldontlie/v1/games?dates[]=${dateAround.prev}&dates[]=${dateAround.today}&dates[]=${dateAround.next}&per_page=200`)
 			.then((res) => {
 				if (!res.ok) throw new Error(res.statusText || 'Failed to fetch schedule');
 				return res.json();
 			})
 			.then((data) => {
+				const arr = Array.isArray(data?.data) ? data.data : [];
 				const set = new Set();
-				(Array.isArray(data?.data) ? data.data : []).forEach((g) => {
-					if (g.home_team?.full_name) set.add(g.home_team.full_name);
-					if (g.visitor_team?.full_name) set.add(g.visitor_team.full_name);
+				arr.forEach((g) => {
+					// Determine the game's date in US/Eastern timezone and
+					// compare to the US target date.
+					const gameIso = g.date || g.game_date || g.gameDate || null;
+					let gameUsDate = null;
+					if (gameIso) {
+						try {
+							gameUsDate = new Date(gameIso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+						} catch (e) {
+							gameUsDate = null;
+						}
+					}
+					if (gameUsDate === usTargetDate) {
+						if (g.home_team?.full_name) set.add(g.home_team.full_name);
+						if (g.visitor_team?.full_name) set.add(g.visitor_team.full_name);
+					}
 				});
 				setScheduledTeamsSet(set);
+				setScheduleQueryInfo((s) => ({ ...s, matched: set.size }));
+				console.debug('Schedule fetch', { targetDate: usTargetDate, requested: [dateAround.prev, dateAround.today, dateAround.next], matched: set.size, returned: arr.length });
 			})
 			.catch((err) => {
 				console.error('Failed to load schedule', err);
@@ -128,12 +198,12 @@ export default function MyBets() {
 			<div className="mybets-grid">
 				<div className="left-column">
 					<h2 style={{ margin: '6px 0', color: 'var(--neon)' }}>Parlay Slips</h2>
-					{parlays.length === 0 && <p>No parlays yet. Create one from the Games page.</p>}
+					{parlays.filter(s => s.status === 'open').length === 0 && <p>No open parlays. Create and lock one from the Games page.</p>}
 					<div className="parlay-list">
-						{parlays.map((slip) => (
+						{parlays.filter(s => s.status === 'open').map((slip) => (
 							<div key={slip.id} className="slip">
 								<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-									<h3 style={{ margin: 0 }}>Parlay Slip — {new Date(slip.createdAt).toLocaleString()}</h3>
+									<h3 style={{ margin: 0 }}>Parlay Slip — {formatSlipDate(slip.createdAt)}</h3>
 									<div style={{ fontSize: 12, color: 'var(--muted)' }}>{slip.picks.length} picks</div>
 								</div>
 
@@ -189,6 +259,13 @@ export default function MyBets() {
 
 				<div className="right-panel">
 					<h3>Today's Teams</h3>
+					{scheduleQueryInfo.targetDate && (
+						<div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+							Showing games for US date (America/New_York): <strong>{scheduleQueryInfo.targetDate}</strong>
+							&nbsp;•&nbsp;Requested API dates: {scheduleQueryInfo.requested.join(', ')}
+							&nbsp;•&nbsp;Matched teams: {scheduleQueryInfo.matched}
+						</div>
+					)}
 					{loadingSchedule && <div>Checking schedule...</div>}
 					{scheduleError && <div style={{ color: '#f88' }}>Schedule error: {scheduleError}</div>}
 					{!loadingSchedule && !scheduleError && (

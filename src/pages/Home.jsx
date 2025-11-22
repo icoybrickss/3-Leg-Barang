@@ -11,13 +11,24 @@ export default function Home() {
   const { currentParlay } = useBets();
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Use local date to avoid UTC shift that can make "today" off by one
+  // Compute the US target date (yesterday in America/New_York) so the
+  // games shown follow the US calendar day (the API uses US timeframe).
   const today = (() => {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+    try {
+      const usToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      // subtract one day to target yesterday in US
+      const [y, m, d] = usToday.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() - 1);
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    } catch (err) {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
   })();
 
   useEffect(() => {
@@ -26,7 +37,26 @@ export default function Home() {
 
     // Use the dev-proxy so the browser talks to our local server and the
     // dev proxy injects the API key server-side (avoids CORS issues).
-    const url = `/api/balldontlie/v1/games?dates[]=${today}`;
+    // Request a small window around the US target date and filter results
+    // by the game's US/Eastern local date to ensure we show games for the
+    // intended US day.
+    const parseIso = (iso) => {
+      try {
+        return new Date(iso);
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const addDaysIso = (isoStr, delta) => {
+      const [y, m, d] = isoStr.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d + delta));
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+    };
+
+    const datePrev = addDaysIso(today, -1);
+    const dateNext = addDaysIso(today, 1);
+    const url = `/api/balldontlie/v1/games?dates[]=${datePrev}&dates[]=${today}&dates[]=${dateNext}&per_page=200`;
 
     fetch(url)
       .then((res) => {
@@ -45,7 +75,19 @@ export default function Home() {
         return res.json();
       })
       .then((data) => {
-        setGames(Array.isArray(data?.data) ? data.data : []);
+        const arr = Array.isArray(data?.data) ? data.data : [];
+        // keep only games whose US/Eastern local date equals our target 'today'
+        const filtered = arr.filter((g) => {
+          const iso = g.date || g.game_date || g.gameDate || null;
+          if (!iso) return false;
+          try {
+            const usDate = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            return usDate === today;
+          } catch (e) {
+            return false;
+          }
+        });
+        setGames(filtered);
       })
       .catch((err) => {
         console.error("Failed to load games:", err);

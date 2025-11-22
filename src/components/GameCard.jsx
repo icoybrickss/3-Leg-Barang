@@ -9,7 +9,7 @@ export default function GameCard({ game, addPick }) {
       visitor: visitor_team.full_name,
       date: game.date,
     });
-    console.log(`Selected ${team} for parlay`);
+    console.log(`Selected ${team} for parlay`);//
   };
 
   return (
