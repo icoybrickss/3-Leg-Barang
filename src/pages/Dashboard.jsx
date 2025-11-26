@@ -57,6 +57,18 @@ export default function Dashboard() {
     return { wins, losses, totalPnl };
   }, [parlays]);
 
+  // Total money placed for the display 'today' (uses same date keying as calendar)
+  const totalPlacedToday = useMemo(() => {
+    const todayKey = formatDateKey(new Date());
+    let sum = 0;
+    parlays.forEach((p) => {
+      const created = p.created_at ? new Date(p.created_at) : null;
+      const key = created ? formatDateKey(created) : null;
+      if (key === todayKey) sum += Number(p.stake || 0);
+    });
+    return sum;
+  }, [parlays]);
+
   // daily map
   const daily = useMemo(() => {
     const map = new Map();
@@ -159,6 +171,10 @@ export default function Dashboard() {
               <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 13 }}>
                 Calendar shows PnL aggregated by parlay created date. Click a day to see details (not implemented).
               </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <h4 style={{ margin: '8px 0 4px 0', color: 'var(--neon)' }}>Placed Today</h4>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--neon)' }}>${totalPlacedToday.toFixed(2)}</div>
             </div>
           </div>
         </div>

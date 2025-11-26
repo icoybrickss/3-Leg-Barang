@@ -2,10 +2,13 @@ import { Link, Route, Routes } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import MyBets from "./pages/MyBets";
+import AnimatedBg from "./components/AnimatedBg";
 
 export default function App() {
   return (
     <div>
+      <AnimatedBg />
+      <div className="app-content">
       <nav className="site-nav container">
         <div className="site-brand">
           <div className="brand-mark">3</div>
@@ -21,12 +24,12 @@ export default function App() {
           <Link to="/dashboard">Dashboard</Link>
         </div>
       </nav>
-
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/mybets" element={<MyBets />} />
           <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
+      </div>
     </div>
   );
 }
