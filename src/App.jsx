@@ -10,7 +10,7 @@ export default function App() {
         <div className="site-brand">
           <div className="brand-mark">3</div>
           <div className="brand-text">
-            <div className="brand-title">3-Leg Spakol</div>
+            <div className="brand-title">3 LEG PRE MATCH SWIRTI</div>
             <div className="brand-sub">anti barang parlay</div>
           </div>
         </div>

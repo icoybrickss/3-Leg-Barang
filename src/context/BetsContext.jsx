@@ -176,6 +176,21 @@ export function BetsProvider({ children }) {
     }
   };
 
+  // Replace a local slip (e.g. created with a timestamp id) with the server
+  // row returned after inserting a parlay. This updates the id and server
+  // metadata so later RPCs can reference the UUID.
+  const replaceSlipWithServer = (oldId, serverRow) => {
+    setParlays((prev) => prev.map((s) => {
+      if (String(s.id) !== String(oldId)) return s;
+      return {
+        ...s,
+        id: serverRow.id,
+        amount: Number(serverRow.stake ?? s.amount),
+        createdAt: serverRow.created_at ?? s.createdAt,
+      };
+    }));
+  };
+
   return (
     <BetsContext.Provider
       value={{
@@ -187,6 +202,7 @@ export function BetsProvider({ children }) {
   lockCurrentParlay,
   setSlipStatus,
   removeSlip,
+  replaceSlipWithServer,
       }}
     >
       {children}

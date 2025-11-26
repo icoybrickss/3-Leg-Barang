@@ -27,6 +27,18 @@ export default ({ mode }: { mode: string }) => {
             })
           },
         },
+        // During local development proxy Supabase requests to avoid CORS.
+        // Client code will use `/supabase` as the base URL in DEV.
+        '/supabase': (() => {
+          const supabaseTarget = env.VITE_SUPABASE_URL || '';
+          if (!supabaseTarget) return null;
+          return {
+            target: supabaseTarget,
+            changeOrigin: true,
+            secure: true,
+            rewrite: (path) => path.replace(/^\/supabase/, ''),
+          };
+        })(),
       },
     },
   })

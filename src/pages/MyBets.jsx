@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBets } from "../context/BetsContext";
-import { settleParlayClient, settleParlayRpc } from "../lib/settlement";
+import { createParlayWithPicks, settleParlayClient, settleParlayRpc } from "../lib/settlement";
 
 export default function MyBets() {
 
@@ -25,7 +25,7 @@ export default function MyBets() {
 			return String(iso);
 		}
 	}
-	const { parlays, setSlipStatus, removeSlip } = useBets();
+	const { parlays, setSlipStatus, removeSlip, replaceSlipWithServer } = useBets();
 	const [teams, setTeams] = useState([]);
 	const [loadingTeams, setLoadingTeams] = useState(true);
 	const [teamsError, setTeamsError] = useState(null);
@@ -98,8 +98,10 @@ export default function MyBets() {
 				next: addDaysToIso(usTargetDate, 1),
 			};
 
-	// record query info for debugging/UI (target is US date)
-	setScheduleQueryInfo({ targetDate: usTargetDate, requested: [dateAround.prev, dateAround.today, dateAround.next], matched: 0 });
+	// display target date shifted back one day to match UI convention
+	const displayTarget = addDaysToIso(usTargetDate, -1);
+	// record query info for debugging/UI (display target is shifted one day back)
+	setScheduleQueryInfo({ targetDate: displayTarget, requested: [dateAround.prev, dateAround.today, dateAround.next], matched: 0 });
 
 	fetch(`/api/balldontlie/v1/games?dates[]=${dateAround.prev}&dates[]=${dateAround.today}&dates[]=${dateAround.next}&per_page=200`)
 			.then((res) => {
@@ -144,8 +146,40 @@ export default function MyBets() {
 		// Initialize all teams with 0
 		teams.forEach((t) => map.set(t.full_name, { team: t, count: 0 }));
 
-		// Tally picks from all parlays
+		// Only count picks from parlays created on the target display date so
+		// counts reset each day. scheduleQueryInfo.targetDate contains the
+		// display target (already shifted back one day elsewhere).
+		const shiftIsoLocal = (isoStr, delta) => {
+			const [y, m, d] = isoStr.split('-').map(Number);
+			const dt = new Date(Date.UTC(y, m - 1, d + delta));
+			return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+		};
+
+		const targetDisplay = scheduleQueryInfo?.targetDate || (() => {
+			try {
+				return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+			} catch {
+				const d = new Date();
+				return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+			}
+		})();
+
+		// Tally picks only from parlays whose createdAt (US/Eastern) display date
+		// matches the targetDisplay (shifted label). This causes counts to reset daily.
 		parlays.forEach((slip) => {
+			const createdAt = slip.createdAt || slip.created_at || null;
+			if (!createdAt) return;
+			let slipUsDate = null;
+			try {
+				slipUsDate = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+			} catch {
+				slipUsDate = null;
+			}
+			if (!slipUsDate) return;
+			// match the display-shifted date
+			const slipDisplay = shiftIsoLocal(slipUsDate, -1);
+			if (slipDisplay !== targetDisplay) return;
+
 			slip.picks.forEach((p) => {
 				const prev = map.get(p.pick);
 				if (prev) prev.count += 1;
@@ -158,7 +192,7 @@ export default function MyBets() {
 
 		// Return an array in alphabetical order by team name
 		return Array.from(map.values()).sort((a, b) => a.team.full_name.localeCompare(b.team.full_name));
-	}, [teams, parlays]);
+	}, [teams, parlays, scheduleQueryInfo]);
 
 	// Filter teamCounts to only scheduled teams (for right-side panel)
 	const scheduledCounts = useMemo(() => {
@@ -171,26 +205,53 @@ export default function MyBets() {
 
 	async function handleSettleWithRpc(slip, isWin) {
 			setSettlingId(slip.id);
+			// optimistic UI: mark slip as settled locally so it disappears from "open" list
 			try {
-			const payout = isWin ? Number(payoutInputs[slip.id] || 0) : 0;
-			try {
-				await settleParlayRpc(slip.id, isWin, payout);
-			} catch (rpcErr) {
-				console.warn('RPC settle failed, attempting client fallback', rpcErr?.message || rpcErr);
-				// fallback to non-atomic client-side settle
-				await settleParlayClient(slip.id, isWin, payout);
+				const payout = isWin ? Number(payoutInputs[slip.id] || 0) : 0;
+				// set status immediately for fast feedback
+					// If this slip was created locally it may have a numeric timestamp id.
+					// The DB RPC expects a UUID. If the id is not a UUID, create the
+					// parlay on the server first, replace the local slip id, then proceed.
+					let parlayIdToSettle = slip.id;
+					const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+					if (!isUuid(parlayIdToSettle)) {
+						try {
+							const serverRow = await createParlayWithPicks({ stake: Number(slip.amount || 0), picks: slip.picks });
+							if (serverRow && serverRow.id) {
+								// update local state to replace the local slip id with server uuid
+								if (typeof replaceSlipWithServer === 'function') replaceSlipWithServer(slip.id, serverRow);
+								parlayIdToSettle = serverRow.id;
+							} else {
+								throw new Error('Failed creating server parlay');
+							}
+						} catch (createErr) {
+							console.error('Failed creating server parlay before settle', createErr);
+							throw createErr;
+						}
+					}
+					// set status immediately for fast feedback (use server id if created)
+					if (typeof setSlipStatus === 'function') setSlipStatus(parlayIdToSettle, isWin ? 'win' : 'loss');
+
+					try {
+						await settleParlayRpc(parlayIdToSettle, isWin, payout);
+					} catch (rpcErr) {
+					console.warn('RPC settle failed, attempting client fallback', rpcErr?.message || rpcErr);
+					// fallback to non-atomic client-side settle
+						await settleParlayClient(parlayIdToSettle, isWin, payout);
+				}
+
+				// success — keep optimistic status. Optionally remove slip from store
+				// if you prefer to delete settled slips, uncomment the next lines:
+				// if (typeof removeSlip === 'function') await removeSlip(slip.id);
+
+			} catch (err) {
+				console.error('settle failed', err);
+				// revert optimistic change
+				if (typeof setSlipStatus === 'function') setSlipStatus(slip.id, 'open');
+				alert('Failed to settle parlay: ' + (err.message || err));
+			} finally {
+				setSettlingId(null);
 			}
-			// update UI: remove slip from context (await deletion) then reload
-			if (typeof removeSlip === 'function') {
-				await removeSlip(slip.id);
-			}
-			window.location.reload();
-		} catch (err) {
-			console.error('settle failed', err);
-			alert('Failed to settle parlay: ' + (err.message || err));
-		} finally {
-			setSettlingId(null);
-		}
 	}
 
 	return (
@@ -252,7 +313,10 @@ export default function MyBets() {
 														{settlingId === slip.id ? 'Settling...' : 'Mark Loss'}
 													</button>
 
-													<button className="btn ghost" onClick={async () => { if (typeof removeSlip === 'function') await removeSlip(slip.id); window.location.reload(); }}>Remove Slip</button>
+													<button className="btn ghost" onClick={async () => {
+														if (!confirm('Remove this slip?')) return;
+														if (typeof removeSlip === 'function') await removeSlip(slip.id);
+													}}>Remove Slip</button>
 												</div>
 							</div>
 						))}
