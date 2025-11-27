@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatPHP } from '../lib/currency';
 import supabase from '../lib/supabase';
 
 // Helpers
@@ -148,7 +149,7 @@ export default function Dashboard() {
                           <div style={{ fontWeight: 700 }}>{cell.getDate()}</div>
                           <div style={{ fontSize: 12, color }}>{info ? (info.wins ? `${info.wins}W` : '') : ''}</div>
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color }}>{profit === 0 ? '' : (profit > 0 ? `+ $${profit.toFixed(2)}` : `- $${Math.abs(profit).toFixed(2)}`)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color }}>{profit === 0 ? '' : (profit > 0 ? `+ ${formatPHP(profit)}` : `- ${formatPHP(Math.abs(profit))}`)}</div>
                       </div>
                     );
                   })}
@@ -163,7 +164,7 @@ export default function Dashboard() {
               <div>Total Parlays: <strong>{parlays.length}</strong></div>
               <div>Wins: <strong style={{ color: 'var(--neon)' }}>{aggregates.wins}</strong></div>
               <div>Losses: <strong style={{ color: '#ff8a8a' }}>{aggregates.losses}</strong></div>
-              <div style={{ marginTop: 8 }}>Total PnL: <strong style={{ color: pnlColor }}>${aggregates.totalPnl.toFixed(2)}</strong></div>
+              <div style={{ marginTop: 8 }}>Total PnL: <strong style={{ color: pnlColor }}>{formatPHP(aggregates.totalPnl)}</strong></div>
             </div>
 
             <div style={{ marginTop: 16 }}>
@@ -174,7 +175,7 @@ export default function Dashboard() {
             </div>
             <div style={{ marginTop: 16 }}>
               <h4 style={{ margin: '8px 0 4px 0', color: 'var(--neon)' }}>Placed Today</h4>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--neon)' }}>${totalPlacedToday.toFixed(2)}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--neon)' }}>{formatPHP(totalPlacedToday)}</div>
             </div>
           </div>
         </div>

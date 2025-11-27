@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBets } from "../context/BetsContext";
+import { formatPHP } from '../lib/currency';
 import { createParlayWithPicks, settleParlayClient, settleParlayRpc } from "../lib/settlement";
 
 export default function MyBets() {
@@ -271,7 +272,7 @@ export default function MyBets() {
 								</div>
 
 								<div style={{ marginTop: 8, marginBottom: 8 }}>
-									<strong>Bet amount:</strong> ${Number(slip.amount || 0).toFixed(2)}
+									<strong>Bet amount:</strong> {formatPHP(Number(slip.amount || 0))}
 									<span style={{ marginLeft: 12, padding: '4px 8px', borderRadius: 6, background: slip.status === 'win' ? 'rgba(57,255,20,0.12)' : slip.status === 'loss' ? 'rgba(255,50,50,0.08)' : 'transparent', color: 'var(--neon)' }}>
 										{slip.status.toUpperCase()}
 									</span>
