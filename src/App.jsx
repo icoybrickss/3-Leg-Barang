@@ -1,8 +1,8 @@
 import { Link, Route, Routes } from "react-router-dom";
+import AnimatedBg from "./components/AnimatedBg";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import MyBets from "./pages/MyBets";
-import AnimatedBg from "./components/AnimatedBg";
 
 export default function App() {
   return (
@@ -13,7 +13,7 @@ export default function App() {
         <div className="site-brand">
           <div className="brand-mark">3</div>
           <div className="brand-text">
-            <div className="brand-title">3 LEG PRE MATCH SWIRTI</div>
+            <div className="brand-title">SugalLangNgSugal10</div>
             <div className="brand-sub">anti barang parlay</div>
           </div>
         </div>
